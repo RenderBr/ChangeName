@@ -6,10 +6,11 @@ using TerrariaApi.Server;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Reflection;
+using Microsoft.Xna.Framework;
 
 namespace ChangeName
 {
-	[ApiVersion(1, 18)]
+	[ApiVersion(2, 1)]
 
 	public class ChangeName : TerrariaPlugin
 	{
@@ -56,7 +57,7 @@ namespace ChangeName
 				return;
 			}
 
-			var foundplr = TShock.Utils.FindPlayer(args.Parameters[0]);
+			var foundplr = TSPlayer.FindByNameOrID(args.Parameters[0]);
 			if (foundplr.Count == 0)
 			{
 				args.Player.SendErrorMessage("Invalid player!");
@@ -76,7 +77,6 @@ namespace ChangeName
 			if (!hidden) TShock.Utils.Broadcast(string.Format("{0} has changed {1}'s name to {2}.", args.Player.Name, oldName, newName), Color.DeepPink);
 			else args.Player.SendMessage(string.Format("You have secretly changed {0}'s name to {1}.", oldName, newName), Color.DeepPink);
 			plr.TPlayer.name = newName;
-			NetMessage.SendData((int)PacketTypes.PlayerInfo, -1, -1, plr.TPlayer.name, args.Player.Index, 0, 0, 0, 0);
 			oldNames[newName] = oldName;
 		}
 
@@ -115,7 +115,6 @@ namespace ChangeName
 
 			string oldName = plr.TPlayer.name;
 			plr.TPlayer.name = newName;
-			NetMessage.SendData((int)PacketTypes.PlayerInfo, -1, -1, plr.TPlayer.name, args.Player.Index, 0, 0, 0, 0);
 			oldNames[newName] = oldName;
 			TShock.Utils.Broadcast(string.Format("{0} has changed his name to {1}.", oldName, newName), Color.DeepPink);
 		}
@@ -148,7 +147,7 @@ namespace ChangeName
 			if (!tsplr.mute)
 			{
 				TShock.Utils.Broadcast(
-					String.Format(TShock.Config.ChatFormat, tsplr.Group.Name, tsplr.Group.Prefix, tsplr.Name, tsplr.Group.Suffix, text),
+					String.Format(TShock.Config.Settings.ChatFormat, tsplr.Group.Name, tsplr.Group.Prefix, tsplr.Name, tsplr.Group.Suffix, text),
 					tsplr.Group.R, tsplr.Group.G, tsplr.Group.B);
 			}
 			else
