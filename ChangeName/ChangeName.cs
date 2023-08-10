@@ -1,159 +1,135 @@
-﻿using System;
+﻿using Microsoft.Xna.Framework;
+using System;
+using System.Collections.Generic;
 using System.Linq;
-using TShockAPI;
+using System.Reflection;
 using Terraria;
 using TerrariaApi.Server;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Reflection;
-using Microsoft.Xna.Framework;
+using TShockAPI;
 
 namespace ChangeName
 {
-	[ApiVersion(2, 1)]
+    [ApiVersion(2, 1)]
+    public class ChangeName : TerrariaPlugin
+    {
+        public override Version Version => Assembly.GetExecutingAssembly().GetName().Version;
+        public override string Name => "ChangeName";
+        public override string Author => "Simon311";
+        public override string Description => "Changing names";
 
-	public class ChangeName : TerrariaPlugin
-	{
-		public override Version Version
-		{
-			get { return Assembly.GetExecutingAssembly().GetName().Version; }
-		}
-		public override string Name
-		{
-			get { return "ChangeName"; }
-		}
-		public override string Author
-		{
-			get { return "Simon311"; }
-		}
-		public override string Description
-		{
-			get { return "Changing names"; }
-		}
+        private readonly Dictionary<string, string> oldNames = new();
 
-		Dictionary<string, string> oldNames = new Dictionary<string, string>();
+        public ChangeName(Main game) : base(game)
+        {
+            Order = -1;
+        }
 
-		public ChangeName(Main game)
-			: base(game)
-		{
-			Order = -1;
-		}
+        public override void Initialize()
+        {
+            Commands.ChatCommands.Add(new Command("changenames", ChanName, "chname"));
+            Commands.ChatCommands.Add(new Command("oldnames", OldName, "oldname"));
+            Commands.ChatCommands.Add(new Command("selfname", SelfName, "selfname"));
+            Commands.ChatCommands.Add(new Command("tshock.canchat", Chat, "chat"));
+        }
 
-		public override void Initialize()
-		{
-			Commands.ChatCommands.Add(new Command("changenames", ChanName, "chname"));
-			Commands.ChatCommands.Add(new Command("oldnames", OldName, "oldname"));
-			Commands.ChatCommands.Add(new Command("selfname", SelfName, "selfname"));
-			Commands.ChatCommands.Add(new Command("tshock.canchat", Chat, "chat"));
-		}
+        private void ChanName(CommandArgs args)
+        {
+            if (args.Player == null || args.Parameters.Count < 2)
+            {
+                args.Player?.SendErrorMessage("Invalid syntax! Proper syntax: /chname [player] [newname]");
+                return;
+            }
 
-		private void ChanName(CommandArgs args)
-		{
-			if (args.Player == null) return;
+            var foundPlayer = TSPlayer.FindByNameOrID(args.Parameters[0]);
+            if (foundPlayer.Count != 1)
+            {
+                args.Player?.SendErrorMessage(foundPlayer.Count == 0 ? "Invalid player!" : $"More than one ({foundPlayer.Count}) player matched!");
+                return;
+            }
 
-			if (args.Parameters.Count < 2)
-			{
-				args.Player.SendErrorMessage("Invalid syntax! Proper syntax: /chname [player] [newname]");
-				return;
-			}
+            var plr = foundPlayer[0];
+            var newName = args.Parameters[1];
+            var hidden = args.Parameters.Count > 2;
 
-			var foundplr = TSPlayer.FindByNameOrID(args.Parameters[0]);
-			if (foundplr.Count == 0)
-			{
-				args.Player.SendErrorMessage("Invalid player!");
-				return;
-			}
-			else if (foundplr.Count > 1)
-			{
-				args.Player.SendErrorMessage(string.Format("More than one ({0}) player matched!", args.Parameters.Count));
-				return;
-			}
+            string oldName = plr.TPlayer.name;
+            if (!hidden)
+                TShock.Utils.Broadcast($"{args.Player.Name} has changed {oldName}'s name to {newName}.", Color.DeepPink);
+            else
+                args.Player.SendMessage($"You have secretly changed {oldName}'s name to {newName}.", Color.DeepPink);
 
-			string newName = args.Parameters[1];
-			bool hidden = args.Parameters.Count > 2;
+            plr.TPlayer.name = newName;
+            oldNames[newName] = oldName;
+        }
 
-			var plr = foundplr[0];
-			string oldName = plr.TPlayer.name;
-			if (!hidden) TShock.Utils.Broadcast(string.Format("{0} has changed {1}'s name to {2}.", args.Player.Name, oldName, newName), Color.DeepPink);
-			else args.Player.SendMessage(string.Format("You have secretly changed {0}'s name to {1}.", oldName, newName), Color.DeepPink);
-			plr.TPlayer.name = newName;
-			oldNames[newName] = oldName;
-		}
+        private void SelfName(CommandArgs args)
+        {
+            if (args.Player == null || args.Parameters.Count < 1)
+            {
+                args.Player?.SendErrorMessage("Invalid syntax! Proper syntax: /selfname [newname]");
+                return;
+            }
 
-		private void SelfName(CommandArgs args)
-		{
-			if (args.Player == null) return;
-			
-			var plr = args.Player;
-			if (args.Parameters.Count < 1)
-			{
-				args.Player.SendErrorMessage("Invalid syntax! Proper syntax: /selfname [newname]");
-				return;
-			}
-			string newName = String.Join(" ", args.Parameters).Trim();
+            var plr = args.Player;
+            var newName = string.Join(" ", args.Parameters).Trim();
 
-			#region Checks
-			if (newName.Length < 2)
-			{
-				args.Player.SendMessage("A name must be at least 2 characters long.", Color.DeepPink);
-				return;
-			}
+            if (newName.Length < 2)
+            {
+                plr.SendMessage("A name must be at least 2 characters long.", Color.DeepPink);
+                return;
+            }
 
-			if (newName.Length > 20)
-			{
-				args.Player.SendMessage("A name must not be longer than 20 characters.", Color.DeepPink);
-				return;
-			}
+            if (newName.Length > 20)
+            {
+                plr.SendMessage("A name must not be longer than 20 characters.", Color.DeepPink);
+                return;
+            }
 
-			List<TSPlayer> SameName = TShock.Players.Where(player => (player != null && player.Name == newName)).ToList();
-			if (SameName.Count > 0)
-			{
-				args.Player.SendMessage("This name is taken by another player.", Color.DeepPink);
-				return;
-			}
-			#endregion Checks
+            if (TShock.Players.Any(player => player != null && player.Name == newName))
+            {
+                plr.SendMessage("This name is taken by another player.", Color.DeepPink);
+                return;
+            }
 
-			string oldName = plr.TPlayer.name;
-			plr.TPlayer.name = newName;
-			oldNames[newName] = oldName;
-			TShock.Utils.Broadcast(string.Format("{0} has changed his name to {1}.", oldName, newName), Color.DeepPink);
-		}
+            string oldName = plr.TPlayer.name;
+            plr.TPlayer.name = newName;
+            oldNames[newName] = oldName;
+            TShock.Utils.Broadcast($"{oldName} has changed his name to {newName}.", Color.DeepPink);
+        }
 
-		private void OldName(CommandArgs args)
-		{
-			if (args.Player == null) return;
-			
-			if (args.Parameters.Count < 1)
-			{
-				args.Player.SendErrorMessage("Invalid syntax! Proper syntax: /oldname [player]");
-				return;
-			}
-			var name = String.Join(" ", args.Parameters);
-			if (oldNames.ContainsKey(name)) args.Player.SendMessage(string.Format("{0}'s old name is {1}.", name, oldNames[name]), Color.DeepPink);
-			else args.Player.SendMessage(string.Format("{0}'s name has not been changed.", name), Color.DeepPink);
-		}
+        private void OldName(CommandArgs args)
+        {
+            if (args.Player == null || args.Parameters.Count < 1)
+            {
+                args.Player?.SendErrorMessage("Invalid syntax! Proper syntax: /oldname [player]");
+                return;
+            }
 
-		private void Chat(CommandArgs args)
-		{
-			if (args.Player == null) return;
-			
-			if (args.Parameters.Count < 1)
-			{
-				args.Player.SendErrorMessage("Invalid syntax! Proper syntax: /chat [message]");
-				return;
-			}
-			string text = String.Join(" ", args.Parameters);
-			var tsplr = args.Player;
-			if (!tsplr.mute)
-			{
-				TShock.Utils.Broadcast(
-					String.Format(TShock.Config.Settings.ChatFormat, tsplr.Group.Name, tsplr.Group.Prefix, tsplr.Name, tsplr.Group.Suffix, text),
-					tsplr.Group.R, tsplr.Group.G, tsplr.Group.B);
-			}
-			else
-			{
-				tsplr.SendErrorMessage("You are muted!");
-			}
-		}
-	}
+            var name = string.Join(" ", args.Parameters);
+            if (oldNames.TryGetValue(name, out string oldName))
+                args.Player.SendMessage($"{name}'s old name is {oldName}.", Color.DeepPink);
+            else
+                args.Player.SendMessage($"{name}'s name has not been changed.", Color.DeepPink);
+        }
+
+        private void Chat(CommandArgs args)
+        {
+            if (args.Player == null || args.Parameters.Count < 1)
+            {
+                args.Player?.SendErrorMessage("Invalid syntax! Proper syntax: /chat [message]");
+                return;
+            }
+
+            var text = string.Join(" ", args.Parameters);
+            var tsplr = args.Player;
+            if (!tsplr.mute)
+            {
+                var chatFormat = string.Format(TShock.Config.Settings.ChatFormat, tsplr.Group.Name, tsplr.Group.Prefix, tsplr.Name, tsplr.Group.Suffix, text);
+                TShock.Utils.Broadcast(chatFormat, tsplr.Group.R, tsplr.Group.G, tsplr.Group.B);
+            }
+            else
+            {
+                tsplr.SendErrorMessage("You are muted!");
+            }
+        }
+    }
 }
